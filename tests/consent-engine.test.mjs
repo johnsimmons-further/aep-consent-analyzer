@@ -238,8 +238,24 @@ console.log('Running AEP Consent Analyzer Engine Tests...');
   assert.equal(evalRes.fields.defaultConsent.raw, '%Consent Management | AEP Permissions | [Global-X]%');
   assert.equal(evalRes.fields.defaultConsent.resolved, 'out');
   assert.equal(evalRes.defaultConsent, 'out');
+  assert.equal(evalRes.aepDetected, true);
   console.log('✓ URL-encoded kndctr_*_consent cookie unescaping (general%3Dout -> general=out) and Launch %...% Data Element resolution verified');
 }
 
+// 8. Test non-AEP pages (e.g. reddit.com) return aepDetected: false and effectiveState: 'not-detected'
+{
+  const nonAepCookies = analyzeCookies('session_id=xyz; theme=dark');
+  const evalNonAep = evaluateVisitorConsentState({
+    cookieAnalysis: nonAepCookies,
+    sdkInfo: { alloyDetected: false },
+    edgeEvents: []
+  });
+  assert.equal(evalNonAep.aepDetected, false);
+  assert.equal(evalNonAep.effectiveState, 'not-detected');
+  assert.equal(evalNonAep.diagnostics.length, 0);
+  console.log('✓ Non-AEP pages cleanly return aepDetected=false and effectiveState="not-detected" with zero noisy diagnostics');
+}
+
 console.log('\nAll AEP Consent Analyzer tests passed successfully!');
+
 

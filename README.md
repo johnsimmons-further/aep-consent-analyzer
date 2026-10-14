@@ -46,3 +46,12 @@ Built according to the official Adobe Experience League Consent Processing speci
    `/Users/johnsimmons/Desktop/code/aep-consent-analyzer/dist`
 5. Visit `https://further.ai/` (or any site running Adobe Experience Platform Web SDK) and click the **AEP Consent Analyzer** extension icon in your toolbar.
 
+### Create a Shareable ZIP Archive
+
+To build and package the unpacked extension into `aep-consent-analyzer.zip` for sharing:
+
+```bash
+npm run zip
+```
+
+

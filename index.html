@@ -58,6 +58,16 @@
       </div>
     </section>
 
+    <!-- Empty State when Adobe Experience Platform / Alloy is not on the page -->
+    <section class="not-detected-card" id="aepNotDetectedCard" style="display: none;">
+      <div class="not-detected-badge">EXPERIENCE PLATFORM NOT DETECTED</div>
+      <h2 class="not-detected-title">Adobe Experience Platform Not Detected on This Page</h2>
+      <p class="not-detected-sub" id="aepNotDetectedSub">
+        No Adobe Experience Platform Web SDK (<code>alloy</code>), <code>kndctr_*</code> cookies, or Edge Network requests were found on this page.
+      </p>
+    </section>
+
+    <div id="analyzerMainContent">
     <!-- Hero Effective Consent Status Banner -->
     <section class="status-hero state-unknown" id="statusHero">
       <div class="status-hero-top">
@@ -526,6 +536,7 @@
         </div>
       </div>
     </section>
+    </div>
   </div>
 
   <script type="module" src="./src/ui/app.js"></script>

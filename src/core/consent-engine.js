@@ -995,9 +995,22 @@ export function evaluateVisitorConsentState({
 
   const defaultConsent = defaultConsentField.effective || null;
 
+  const aepDetected = Boolean(
+    sdkInfo?.alloyDetected ||
+      orgIdField.effective ||
+      datastreamIdField.effective ||
+      defaultConsentField.effective ||
+      consentCookie ||
+      identityCookie ||
+      checkCookie ||
+      edgeEvents.length > 0
+  );
+
   // Determine effective consent state
-  let effectiveState = 'unknown'; // 'opted-in' | 'opted-out' | 'pending' | 'unknown'
-  let stateSource = 'No AEP Web SDK or kndctr consent cookie detected yet';
+  let effectiveState = aepDetected ? 'unknown' : 'not-detected';
+  let stateSource = aepDetected
+    ? 'AEP detected, awaiting consent signal'
+    : 'Experience Platform not detected on this page';
 
   if (consentCookie?.generalStatus === 'in') {
     effectiveState = 'opted-in';
@@ -1161,6 +1174,7 @@ export function evaluateVisitorConsentState({
   }
 
   return {
+    aepDetected,
     effectiveState,
     stateSource,
     orgId:

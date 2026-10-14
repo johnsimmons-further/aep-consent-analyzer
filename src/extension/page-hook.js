@@ -264,94 +264,10 @@
     emitToExtension('STATE_UPDATE', buildSnapshot());
   }
 
-  // 1. Hook window.fetch
-  const origFetch = window.fetch;
-  if (typeof origFetch === 'function') {
-    window.fetch = function (input, init) {
-      const url = typeof input === 'string' ? input : input?.url || '';
-      const isEdge = isEdgeNetworkUrl(url);
-      if (isEdge) {
-        try {
-          const body = init?.body;
-          if (typeof body === 'string') {
-            parseEdgeRequest(url, body, 'fetch');
-          } else if (body instanceof Blob) {
-            body.text().then((txt) => parseEdgeRequest(url, txt, 'fetch')).catch(() => {});
-          }
-        } catch {
-          // ignore
-        }
-      }
-      const fetchPromise = origFetch.apply(this, arguments);
-      if (isEdge && fetchPromise && typeof fetchPromise.then === 'function') {
-        fetchPromise
-          .then((res) => {
-            if (res && typeof res.clone === 'function') {
-              res
-                .clone()
-                .json()
-                .then((json) => {
-                  if (Array.isArray(json?.handle)) {
-                    for (const h of json.handle) {
-                      if (h.type === 'identity:result' && Array.isArray(h.payload)) {
-                        const ecidEntry = h.payload.find((p) => p.namespace?.code === 'ECID');
-                        if (ecidEntry?.id) state.ecid = ecidEntry.id;
-                      }
-                    }
-                    emitToExtension('STATE_UPDATE', buildSnapshot());
-                  }
-                })
-                .catch(() => {});
-            }
-          })
-          .catch(() => {});
-      }
-      return fetchPromise;
-    };
-  }
-
-  // 2. Hook XMLHttpRequest
-  const origOpen = XMLHttpRequest.prototype.open;
-  const origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function (method, url) {
-    this.__aepUrl = url;
-    return origOpen.apply(this, arguments);
-  };
-  XMLHttpRequest.prototype.send = function (body) {
-    try {
-      if (this.__aepUrl && isEdgeNetworkUrl(this.__aepUrl)) {
-        if (typeof body === 'string') {
-          parseEdgeRequest(this.__aepUrl, body, 'xhr');
-        } else if (body instanceof Blob) {
-          body.text().then((txt) => parseEdgeRequest(this.__aepUrl, txt, 'xhr')).catch(() => {});
-        } else {
-          parseEdgeRequest(this.__aepUrl, null, 'xhr');
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return origSend.apply(this, arguments);
-  };
-
-  // 3. Hook navigator.sendBeacon
-  if (typeof navigator.sendBeacon === 'function') {
-    const origBeacon = navigator.sendBeacon.bind(navigator);
-    navigator.sendBeacon = function (url, data) {
-      try {
-        if (isEdgeNetworkUrl(url)) {
-          if (typeof data === 'string') {
-            parseEdgeRequest(url, data, 'beacon');
-          } else if (data instanceof Blob) {
-            data.text().then((txt) => parseEdgeRequest(url, txt, 'beacon')).catch(() => {});
-          }
-        }
-      } catch {
-        // ignore
-      }
-      return origBeacon(url, data);
-    };
-  }
+  // Note: We intentionally do NOT monkey-patch global window.fetch, XMLHttpRequest, or
+  // navigator.sendBeacon in the page context, because doing so places page-hook.js in the
+  // call stack of unrelated third-party requests that may violate a site's Content Security Policy.
+  // Instead, Edge Network HTTP requests are observed out-of-process by background.js via chrome.webRequest.
 
   /**
    * Resolve any `%something here%` Adobe Tags / Launch Data Element syntax using `_satellite.getVar('something here')`
@@ -446,9 +362,6 @@
     try {
       const sat = window._satellite;
       if (sat && typeof sat === 'object') {
-        if (sat.company?.orgId && !state.orgId) {
-          state.orgId = sat.company.orgId;
-        }
         const container = sat._container || (typeof sat.container === 'object' ? sat.container : null);
         if (container) {
           const stage = (container.environment?.stage || 'production').toLowerCase();
@@ -474,7 +387,11 @@
                   inst.developmentEdgeConfigId ||
                   inst.datastreamId;
 
-            const orgBinding = resolveLaunchSetting(inst.orgId, sat, state.resolvedDataElements);
+            const orgBinding = resolveLaunchSetting(
+              inst.orgId || sat.company?.orgId,
+              sat,
+              state.resolvedDataElements
+            );
             const edgeDomainBinding = resolveLaunchSetting(
               inst.edgeDomain,
               sat,
@@ -731,6 +648,8 @@
     if (type === 'REQUEST_SNAPSHOT') {
       await queryAlloyRuntimeInfo();
       emitToExtension('SNAPSHOT_RESPONSE', buildSnapshot());
+    } else if (type === 'EDGE_NETWORK_HIT_FROM_BG' && payload) {
+      parseEdgeRequest(payload.url, payload.body, payload.transport || 'webRequest');
     } else if (type === 'EXECUTE_SET_CONSENT' && payload) {
       const fnName = state.instanceNames[0] || 'alloy';
       if (typeof window[fnName] === 'function') {
@@ -749,16 +668,29 @@
     }
   });
 
+  function hasAepPresenceOnPage() {
+    return Boolean(
+      state.alloyDetected ||
+        state.orgId ||
+        state.datastreamId ||
+        /kndctr_[^=]+_AdobeOrg_/i.test(document.cookie)
+    );
+  }
+
   // Periodic scan during startup
   scanAndHookAlloy();
   inspectAdobeLaunchAndDataLayer();
   window.addEventListener('DOMContentLoaded', () => {
     scanAndHookAlloy();
     inspectAdobeLaunchAndDataLayer();
-    emitToExtension('STATE_UPDATE', buildSnapshot());
+    if (hasAepPresenceOnPage()) {
+      emitToExtension('STATE_UPDATE', buildSnapshot());
+    }
   });
   window.addEventListener('load', async () => {
     await queryAlloyRuntimeInfo();
-    emitToExtension('STATE_UPDATE', buildSnapshot());
+    if (hasAepPresenceOnPage()) {
+      emitToExtension('STATE_UPDATE', buildSnapshot());
+    }
   });
 })();

@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "build": "node scripts/build.mjs",
+    "zip": "node scripts/zip.mjs",
     "test": "node tests/consent-engine.test.mjs",
     "check": "node tests/consent-engine.test.mjs && node scripts/build.mjs"
   }

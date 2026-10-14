@@ -91,6 +91,19 @@
         return false;
       }
 
+      if (message.action === 'FORWARD_EDGE_HIT' && message.payload) {
+        window.postMessage(
+          {
+            source: 'AEP_CONSENT_ANALYZER_EXTENSION',
+            type: 'EDGE_NETWORK_HIT_FROM_BG',
+            payload: message.payload
+          },
+          '*'
+        );
+        sendResponse({ ok: true });
+        return false;
+      }
+
       return false;
     });
   }

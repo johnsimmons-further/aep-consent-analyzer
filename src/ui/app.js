@@ -142,9 +142,27 @@ async function refreshFromChromeExtensionTab() {
         targetLabel.textContent = `Inspecting: ${response.tab.url}`;
       }
       renderAll();
+    } else {
+      currentSnapshot = {
+        url: '',
+        title: '',
+        documentCookie: '',
+        sdkInfo: { alloyDetected: false },
+        edgeEvents: []
+      };
+      currentChromeCookies = [];
+      renderAll();
     }
   } catch (err) {
-    console.warn('Extension tab inspection fallback:', err);
+    currentSnapshot = {
+      url: '',
+      title: '',
+      documentCookie: '',
+      sdkInfo: { alloyDetected: false },
+      edgeEvents: []
+    };
+    currentChromeCookies = [];
+    renderAll();
   }
 }
 
@@ -242,6 +260,18 @@ function renderAll() {
     edgeEvents,
     tcfState: currentSnapshot.tcfData || null
   });
+
+  const notDetectedCard = document.getElementById('aepNotDetectedCard');
+  const mainContent = document.getElementById('analyzerMainContent');
+
+  if (!evaluation.aepDetected && customCookieOverride === null) {
+    if (notDetectedCard) notDetectedCard.style.display = 'flex';
+    if (mainContent) mainContent.style.display = 'none';
+    return;
+  }
+
+  if (notDetectedCard) notDetectedCard.style.display = 'none';
+  if (mainContent) mainContent.style.display = 'block';
 
   renderHeroBanner(evaluation, currentSnapshot);
   renderDiagnostics(evaluation.diagnostics);
