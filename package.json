@@ -1,0 +1,12 @@
+{
+  "name": "aep-consent-analyzer",
+  "version": "1.0.0",
+  "description": "Chrome Extension (Manifest V3) & Web Analyzer for inspecting Adobe Experience Platform (AEP) Web SDK consent status, kndctr_* cookies, XDM Consents & Preferences 2.0 payloads, Launch Data Elements, and IAB TCF 2.0 Vendor 565.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node tests/consent-engine.test.mjs",
+    "check": "node tests/consent-engine.test.mjs && node scripts/build.mjs"
+  }
+}

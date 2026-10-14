@@ -34,10 +34,15 @@ Built according to the official Adobe Experience League Consent Processing speci
 
 ---
 
-## How to Load the Chrome Extension
+## Build & Load the Chrome Extension
 
-1. Open Google Chrome and navigate to `chrome://extensions/`.
-2. Enable **Developer mode** (toggle in the top-right corner).
-3. Click **Load unpacked** and select this project folder:
-   `/Users/johnsimmons/Desktop/code/aep-consent-analyzer`
-4. Visit `https://further.ai/` (or any site running Adobe Experience Platform Web SDK) and click the **AEP Consent Analyzer** extension icon in your toolbar.
+1. Build the unpacked extension into `dist/`:
+   ```bash
+   npm run build
+   ```
+2. Open Google Chrome and navigate to `chrome://extensions/`.
+3. Enable **Developer mode** (toggle in the top-right corner).
+4. Click **Load unpacked** and select the generated `dist/` folder:
+   `/Users/johnsimmons/Desktop/code/aep-consent-analyzer/dist`
+5. Visit `https://further.ai/` (or any site running Adobe Experience Platform Web SDK) and click the **AEP Consent Analyzer** extension icon in your toolbar.
+
