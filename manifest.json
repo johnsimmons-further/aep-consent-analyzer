@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Adobe Experience Platform (AEP) Consent Analyzer",
+  "short_name": "AEP Consent",
+  "version": "1.0.0",
+  "description": "Inspect visitor Adobe Experience Platform consent status, kndctr_* cookies, Web SDK defaultConsent & queued events, Edge Network payloads, XDM Consents & Preferences, and IAB TCF 2.0.",
+  "permissions": [
+    "activeTab",
+    "cookies",
+    "storage",
+    "tabs",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "AEP Consent Analyzer",
+    "default_popup": "index.html?mode=popup"
+  },
+  "side_panel": {
+    "default_path": "index.html?mode=sidepanel"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/extension/page-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/extension/content-script.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ]
+}

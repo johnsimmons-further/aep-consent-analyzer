@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Adobe Experience Platform (AEP) Consent Status Analyzer</title>
+  <link rel="stylesheet" href="./src/ui/styles.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand-group">
+        <div class="brand-logo" title="Adobe Experience Platform Consent Analyzer">AEP</div>
+        <div>
+          <h1 class="brand-title">AEP Visitor Consent Status Analyzer</h1>
+          <div class="brand-subtitle" id="inspectedTargetLabel">
+            Web SDK (`alloy`), `kndctr_*` Cookies, XDM Consents &amp; Preferences, and IAB TCF 2.0
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <span class="mode-pill" id="runtimeModeBadge">Chrome Extension</span>
+        <button class="btn" id="btnRefreshScan" title="Re-scan cookies, Web SDK state, and Edge Network events">
+          &#x21bb; Re-scan Tab
+        </button>
+        <button class="btn" id="btnTogglePresets" title="Toggle reference AEP consent scenarios (e.g. further.ai)">
+          Reference Presets
+        </button>
+        <button class="btn" id="btnExpandFullTab" style="display: none;" title="Open Analyzer in a full browser tab">
+          Expand View &#x2197;
+        </button>
+      </div>
+    </header>
+
+    <!-- Reference Scenario Preset Bar -->
+    <section class="simulator-bar" id="simulatorBar" style="display: none;">
+      <div class="simulator-bar-label">
+        <span>&#9881; Reference Consent Presets:</span>
+      </div>
+      <div class="scenario-buttons">
+        <button class="btn btn-scenario active" data-scenario="further-ai">
+          1. Further.ai Live Config (`dcp.further.ai` + OneTrust `C0002`)
+        </button>
+        <button class="btn btn-scenario" data-scenario="adobe20-opt-in">
+          2. Adobe 2.0 Opt-In (`collect="y"`, Granular XDM)
+        </button>
+        <button class="btn btn-scenario" data-scenario="gdpr-pending">
+          3. GDPR Pending (`defaultConsent="pending"`, Queued Hit)
+        </button>
+        <button class="btn btn-scenario" data-scenario="strict-opt-out">
+          4. Visitor Opt-Out (`general=out`, Hits Blocked)
+        </button>
+        <button class="btn btn-scenario" data-scenario="misconfigured-leak">
+          5. Compliance Leak (`defaultConsent="in"` + TCF 565 Denied)
+        </button>
+      </div>
+    </section>
+
+    <!-- Hero Effective Consent Status Banner -->
+    <section class="status-hero state-unknown" id="statusHero">
+      <div class="status-hero-top">
+        <div class="status-badge-group">
+          <span class="status-badge unknown" id="heroBadge">ANALYZING...</span>
+          <div>
+            <div class="status-source-text" id="heroSourceText">Checking visitor cookies and Web SDK state...</div>
+            <div class="status-source-sub" id="heroSubText">Adobe Experience Platform Consent Standard 2.0 / 1.0 &amp; IAB TCF 2.0</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-success" id="btnQuickOptIn" title="Trigger alloy('setConsent') Opt-In on current page">
+            &#10003; Simulate Visitor Opt-In
+          </button>
+          <button class="btn btn-danger" id="btnQuickOptOut" title="Trigger alloy('setConsent') Opt-Out on current page">
+            &#10005; Simulate Visitor Opt-Out
+          </button>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">IMS Organization ID</div>
+          <div class="kpi-value" id="kpiOrgId">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Datastream ID</div>
+          <div class="kpi-value" id="kpiDatastreamId">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Web SDK defaultConsent</div>
+          <div class="kpi-value" id="kpiDefaultConsent">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">kndctr_*_consent Cookie</div>
+          <div class="kpi-value" id="kpiConsentCookie">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">kndctr_*_identity (ECID)</div>
+          <div class="kpi-value" id="kpiIdentityCookie">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Queued SDK Events</div>
+          <div class="kpi-value" id="kpiQueuedEvents">0</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav" role="tablist">
+      <button class="tab-btn active" data-tab="tab-live">
+        1. Live Web SDK &amp; Cookies (kndctr_*)
+      </button>
+      <button class="tab-btn" data-tab="tab-xdm">
+        2. XDM consents &amp; Edge Payload Inspector
+      </button>
+      <button class="tab-btn" data-tab="tab-builder">
+        3. setConsent Simulator &amp; Code Generator
+      </button>
+      <button class="tab-btn" data-tab="tab-tcf">
+        4. IAB TCF 2.0 &amp; Vendor #565 Decoder
+      </button>
+      <button class="tab-btn" data-tab="tab-docs">
+        5. AEP Consent Architecture Guide
+      </button>
+    </nav>
+
+    <!-- TAB 1: Live Web SDK & Cookies -->
+    <main class="tab-panel active" id="tab-live">
+      <!-- Automated Diagnostics -->
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">Automated AEP Consent Diagnostics &amp; Compliance Checks</h2>
+            <p class="section-subtitle">
+              Evaluates `defaultConsent`, `kndctr_<orgId>_AdobeOrg_consent`, ECID generation timing, and Merge Policy timestamps
+            </p>
+          </div>
+        </div>
+        <div class="diagnostics-list" id="diagnosticsContainer"></div>
+      </div>
+
+      <!-- Cookies Inspection Table -->
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">First-Party AEP (`kndctr_*`) &amp; CMP Cookies</h2>
+            <p class="section-subtitle">
+              The Web SDK persists visitor consent in `kndctr_&lt;orgId&gt;_AdobeOrg_consent` (180-day TTL) regardless of opt-in or opt-out
+            </p>
+          </div>
+        </div>
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Cookie Name</th>
+                <th>Category</th>
+                <th>Parsed Status / Value</th>
+                <th>Raw Value</th>
+                <th>Role in AEP Consent Flow</th>
+              </tr>
+            </thead>
+            <tbody id="cookieTableBody"></tbody>
+          </table>
+        </div>
+
+        <details style="margin-top: 12px;">
+          <summary style="cursor: pointer; font-size: 12px; color: var(--status-info-text); font-weight: 600;">
+            + Paste a custom `document.cookie` string from another visitor session to analyze
+          </summary>
+          <div style="margin-top: 10px;">
+            <textarea
+              class="textarea-control"
+              id="customCookieInput"
+              style="min-height: 70px;"
+              placeholder="kndctr_97D1F3F459CE0AD80A495CBE_AdobeOrg_consent=general%3Din; kndctr_97D1F3F459CE0AD80A495CBE_AdobeOrg_identity=CiY...; OptanonConsent=groups=C0001%3A1%2CC0002%3A1"
+            ></textarea>
+            <div style="margin-top: 8px; display: flex; gap: 8px;">
+              <button class="btn btn-primary" id="btnAnalyzeCustomCookie">Analyze Pasted Cookies</button>
+              <button class="btn" id="btnResetCustomCookie">Reset to Live Page Cookies</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Web SDK Command Queue & Execution Timeline -->
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">Web SDK (`alloy`) Command Queue &amp; Execution Timeline</h2>
+            <p class="section-subtitle">
+              Shows `configure`, `sendEvent` (queued when `defaultConsent: "pending"`), and `setConsent` calls
+            </p>
+          </div>
+          <div class="header-actions">
+            <button class="btn" id="btnFireTestPageView">
+              + Fire Test `alloy("sendEvent")` Hit
+            </button>
+          </div>
+        </div>
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Command</th>
+                <th>Enforcement / Queue Status</th>
+                <th>Details / Options</th>
+              </tr>
+            </thead>
+            <tbody id="commandTimelineBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: XDM Consents & Edge Payload Inspector -->
+    <section class="tab-panel" id="tab-xdm">
+      <div class="two-col-grid">
+        <!-- Left column: Intercepted Edge Hits + JSON Input -->
+        <div class="section-card">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Edge Network `/v1/privacy/set-consent` &amp; XDM Payload</h2>
+              <p class="section-subtitle">
+                Select an intercepted Edge Network hit below or paste any `setConsent` / XDM `consents` JSON payload
+              </p>
+            </div>
+            <div class="header-actions">
+              <button class="btn btn-primary" id="btnAnalyzeXdmJson">Validate XDM JSON</button>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="edgeEventSelector">Captured Edge Network / `setConsent` Payloads:</label>
+            <select class="select-control" id="edgeEventSelector">
+              <option value="">-- Latest Captured Consent Payload --</option>
+            </select>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="xdmJsonTextarea">
+              XDM `consents` / `alloy("setConsent", ...)` JSON Payload:
+            </label>
+            <textarea class="textarea-control" id="xdmJsonTextarea" style="min-height: 280px;"></textarea>
+          </div>
+        </div>
+
+        <!-- Right column: XDM Field Breakdown & Findings -->
+        <div class="section-card">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">XDM `Consents and Preferences` Schema Breakdown</h2>
+              <p class="section-subtitle">
+                Validates `collect`, `share`, `personalize`, `marketing`, `adID`, `idSpecific`, and `metadata.time`
+              </p>
+            </div>
+          </div>
+
+          <div class="diagnostics-list" id="xdmFindingsContainer" style="margin-bottom: 14px;"></div>
+
+          <div class="data-table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>XDM Path</th>
+                  <th>Category</th>
+                  <th>Value</th>
+                  <th>Enforcement</th>
+                  <th>AEP Behavior</th>
+                </tr>
+              </thead>
+              <tbody id="xdmBreakdownBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reference table of all XDM Consents & Preferences `val` codes -->
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">Standard XDM `Consents and Preferences` Value (`val`) Enum Reference</h2>
+            <p class="section-subtitle">
+              All permissible `val` codes defined in the Adobe XDM `Consents and Preferences` data type specification
+            </p>
+          </div>
+        </div>
+        <div class="data-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Code (`val`)</th>
+                <th>Label</th>
+                <th>Category</th>
+                <th>Web SDK `collect.val` Effect</th>
+                <th>Official Definition</th>
+              </tr>
+            </thead>
+            <tbody id="xdmEnumReferenceBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: setConsent Simulator & Code Generator -->
+    <section class="tab-panel" id="tab-builder">
+      <div class="two-col-grid">
+        <div class="section-card">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Interactive `alloy("setConsent", ...)` Builder</h2>
+              <p class="section-subtitle">
+                Build a compliant Adobe 2.0 (XDM), Adobe 1.0, or IAB TCF 2.0 command and test it live on the page
+              </p>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="input-group">
+              <label class="input-label" for="builderStandard">Consent Standard</label>
+              <select class="select-control" id="builderStandard">
+                <option value="Adobe-2.0">Adobe Standard 2.0 (XDM Consents &amp; Preferences)</option>
+                <option value="Adobe-1.0">Adobe Standard 1.0 (`general: "in" | "out"`)</option>
+                <option value="IAB-TCF-2.0">IAB TCF 2.0 (`standard: "IAB TCF"`, `version: "2.0"`)</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="builderCollectVal">`consents.collect.val` (Data Collection)</label>
+              <select class="select-control" id="builderCollectVal">
+                <option value="y">y — Yes (Opt-in)</option>
+                <option value="n">n — No (Opt-out)</option>
+                <option value="p">p — Pending</option>
+                <option value="u">u — Unknown</option>
+                <option value="dy">dy — Default Yes</option>
+                <option value="dn">dn — Default No</option>
+                <option value="VI">VI — Vital Interest</option>
+                <option value="VO">VO — Voluntary Opt-in</option>
+                <option value="LI">LI — Legitimate Interest</option>
+                <option value="LO">LO — Legitimate Interest Opt-out</option>
+                <option value="CT">CT — Contract</option>
+                <option value="CP">CP — Compliance with Legal Obligation</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="builderShareVal">`consents.share.val` (2nd/3rd Party Sharing)</label>
+              <select class="select-control" id="builderShareVal">
+                <option value="y">y — Yes (Opt-in)</option>
+                <option value="n">n — No (Opt-out)</option>
+                <option value="u">u — Unknown</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="builderPersonalizeVal">`consents.personalize.content.val`</label>
+              <select class="select-control" id="builderPersonalizeVal">
+                <option value="y">y — Yes (Allow Personalization)</option>
+                <option value="n">n — No (Generic Content Only)</option>
+                <option value="u">u — Unknown</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="builderPreferredChannel">`consents.marketing.preferred`</label>
+              <select class="select-control" id="builderPreferredChannel">
+                <option value="email">email</option>
+                <option value="push">push</option>
+                <option value="sms">sms</option>
+                <option value="call">call</option>
+                <option value="directMail">directMail</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="builderEmailVal">`consents.marketing.email.val`</label>
+              <select class="select-control" id="builderEmailVal">
+                <option value="y">y — Opt-in to Marketing Email</option>
+                <option value="n">n — Opt-out of Marketing Email</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="builderPushVal">`consents.marketing.push.val`</label>
+              <select class="select-control" id="builderPushVal">
+                <option value="n">n — Opt-out of Push</option>
+                <option value="y">y — Opt-in to Push</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label" for="builderSmsVal">`consents.marketing.sms.val`</label>
+              <select class="select-control" id="builderSmsVal">
+                <option value="n">n — Opt-out of SMS</option>
+                <option value="y">y — Opt-in to SMS</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="input-group" style="flex-direction: row; align-items: center; gap: 8px;">
+            <input type="checkbox" id="builderIncludeIdSpecific" />
+            <label class="input-label" for="builderIncludeIdSpecific" style="cursor: pointer;">
+              Include `consents.idSpecific` Identity Override (Profile Field Group extension)
+            </label>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="btnExecuteBuiltConsent">
+              &#9654; Execute `alloy("setConsent")` on Active Page
+            </button>
+            <button class="btn" id="btnCopyBuiltSnippet">
+              Copy JavaScript Snippet
+            </button>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <div>
+              <h2 class="section-title">Generated Web SDK Code Snippet</h2>
+              <p class="section-subtitle">
+                Drop into your CMP callback (e.g., `OptanonWrapper` or `__tcfapi`)
+              </p>
+            </div>
+          </div>
+          <pre class="code-block" id="builderCodeOutput"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: IAB TCF 2.0 & Vendor 565 Decoder -->
+    <section class="tab-panel" id="tab-tcf">
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">IAB TCF 2.0 String &amp; Adobe Vendor ID #565 Inspector</h2>
+            <p class="section-subtitle">
+              Adobe Experience Platform is registered on the IAB TCF 2.0 Global Vendor List under Vendor ID <strong>565</strong>
+            </p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-primary" id="btnDecodeTcf">Decode TCF 2.0 String</button>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="tcfStringInput">
+            Paste IAB TCF 2.0 Base64URL String (`euconsent-v2` cookie or `tcData.tcString`):
+          </label>
+          <input
+            type="text"
+            class="input-control mono"
+            id="tcfStringInput"
+            value="COtybn4PA_zT4KjACBENAPCIAEBAAECAAIAAAAAAAAAA"
+          />
+        </div>
+
+        <div id="tcfDecodeResultContainer" style="margin-top: 14px;"></div>
+      </div>
+    </section>
+
+    <!-- TAB 5: AEP Consent Architecture Reference -->
+    <section class="tab-panel" id="tab-docs">
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <h2 class="section-title">How Adobe Experience Platform Processes Visitor Consent</h2>
+            <p class="section-subtitle">
+              Synthesized directly from the official Adobe Experience League Consent Processing documentation
+            </p>
+          </div>
+        </div>
+
+        <div class="diagnostics-list">
+          <div class="diag-item severity-info">
+            <div class="diag-title">
+              <span>1. Client-Side Collection (`defaultConsent` &amp; `setConsent`)</span>
+              <a class="diag-link" href="https://experienceleague.adobe.com/en/docs/experience-platform/landing/governance-privacy-security/consent/sdk" target="_blank">Read SDK Docs &#x2197;</a>
+            </div>
+            <div class="diag-detail">
+              The AEP Web SDK (`alloy`) does not connect to CMPs out of the box. You configure `defaultConsent` (`"pending"`, `"in"`, or `"out"`) during `alloy("configure", ...)`. When set to `"pending"`, all `sendEvent` calls are held in an in-memory queue and no ECID cookie (`kndctr_&lt;orgId&gt;_AdobeOrg_identity`) is created until `alloy("setConsent", ...)` is invoked. Once invoked, the visitor's choice is cached for 180 days in `kndctr_&lt;orgId&gt;_AdobeOrg_consent` (`general=in` or `general=out`).
+            </div>
+          </div>
+
+          <div class="diag-item severity-info">
+            <div class="diag-title">
+              <span>2. Profile-Enabled Dataset &amp; Schema Field Group</span>
+              <a class="diag-link" href="https://experienceleague.adobe.com/en/docs/experience-platform/landing/governance-privacy-security/consent/adobe/dataset" target="_blank">Read Dataset Docs &#x2197;</a>
+            </div>
+            <div class="diag-detail">
+              Consent data must be routed via your Datastream to a <strong>Profile-enabled dataset</strong> based on the <strong>XDM Individual Profile</strong> class using the <em>Consents and Preferences</em> field group (`consents`). Note: Consent data sent inside an <em>XDM ExperienceEvent</em> dataset (`interact` hits) is <strong>not</strong> honored by downstream AEP consent enforcement workflows!
+            </div>
+          </div>
+
+          <div class="diag-item severity-info">
+            <div class="diag-title">
+              <span>3. XDM `Consents and Preferences` Data Type vs. Field Group</span>
+              <a class="diag-link" href="https://experienceleague.adobe.com/en/docs/experience-platform/xdm/field-groups/profile/consents" target="_blank">Read XDM Docs &#x2197;</a>
+            </div>
+            <div class="diag-detail">
+              The standard Profile field group provides `consents.collect.val` (automatically enforced by Web SDK), `consents.share.val`, `consents.personalize.content.val`, `consents.marketing.*` (`preferred`, `any`, `email`, `push`, `sms`, `call`, `directMail`), and `consents.metadata.time`. Specifically on Profile schemas, the field group removes `adID` and adds `idSpecific` (`consents.idSpecific.&lt;namespace&gt;.&lt;id&gt;`) for identity-granular preferences.
+            </div>
+          </div>
+
+          <div class="diag-item severity-info">
+            <div class="diag-title">
+              <span>4. Real-Time Customer Profile &amp; Merge Policies</span>
+              <a class="diag-link" href="https://experienceleague.adobe.com/en/docs/experience-platform/landing/governance-privacy-security/consent/adobe/overview" target="_blank">Read Overview Docs &#x2197;</a>
+            </div>
+            <div class="diag-detail">
+              Always include `consents.metadata.time` (ISO 8601 timestamp) when calling `setConsent`. Real-Time Customer Profile uses <strong>Timestamp-Ordered Merge Policies</strong> (or Dataset Precedence) to ensure a customer's newest consent update overrides older profile fragments.
+            </div>
+          </div>
+
+          <div class="diag-item severity-info">
+            <div class="diag-title">
+              <span>5. IAB TCF 2.0 Support (Adobe Vendor ID 565)</span>
+              <a class="diag-link" href="https://experienceleague.adobe.com/en/docs/experience-platform/landing/governance-privacy-security/consent/iab/overview" target="_blank">Read IAB TCF 2.0 Docs &#x2197;</a>
+            </div>
+            <div class="diag-detail">
+              When using an IAB TCF 2.0 CMP, pass `standard: "IAB TCF"`, `version: "2.0"`, and `value: tcData.tcString` to `alloy("setConsent", ...)`. Adobe Experience Platform's registered TCF 2.0 Vendor ID is <strong>565</strong>, and your CMP must have a valid registered IAB CMP ID for AEP to enforce TCF 2.0 consent downstream.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="./src/ui/app.js"></script>
+</body>
+</html>
